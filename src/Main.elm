@@ -7,20 +7,28 @@ import Html.Styled as Html exposing (Attribute, Html)
 import Html.Styled.Attributes as Attributes
 import Html.Styled.Events as Events
 import Json.Decode as Decode
+import Json.Encode as Encode
 import Keyboard.Event
 import Music.Pitch
 import Music.PitchClass
 import Music.Scale
 
 
-port sendNote : String -> Cmd msg
+port sendNote : Encode.Value -> Cmd msg
+
+
+port startMidi : () -> Cmd msg
 
 
 main =
     Browser.document
         { init = init
         , update = update
-        , view = \model -> { body = [ view model |> Html.toUnstyled ], title = "hacker" }
+        , view =
+            \model ->
+                { body = [ view model |> Html.toUnstyled ]
+                , title = "TYPE MUSIC"
+                }
         , subscriptions = subscriptions
         }
 
@@ -28,6 +36,7 @@ main =
 type alias Model =
     { currentScale : Music.Scale.Scale
     , currentPressedLetter : Maybe String
+    , midiState : MidiState
     }
 
 
@@ -35,12 +44,14 @@ type Msg
     = NoOp
     | HandleKeyPress Keyboard.Event.KeyboardEvent
     | ReleaseKey
+    | StartMidi
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { currentScale = Music.Scale.major Music.PitchClass.c
       , currentPressedLetter = Nothing
+      , midiState = NoConnection
       }
     , Cmd.none
     )
@@ -62,10 +73,9 @@ update msg model =
                             model.currentScale
                                 |> Music.Scale.degree degree_
                                 |> Music.Pitch.fromPitchClassInOctave 4
-                                |> Music.Pitch.toString
                     in
                     ( { model | currentPressedLetter = keyboardEvent.key }
-                    , sendNote note
+                    , sendNote (encodeNote note)
                     )
 
                 Nothing ->
@@ -73,6 +83,9 @@ update msg model =
 
         ReleaseKey ->
             ( { model | currentPressedLetter = Nothing }, Cmd.none )
+
+        StartMidi ->
+            ( { model | midiState = Started }, startMidi () )
 
         NoOp ->
             ( model, Cmd.none )
@@ -82,7 +95,27 @@ view : Model -> Html Msg
 view model =
     Html.div []
         [ viewLetter |> maybeView model.currentPressedLetter
+        , viewMidiControl model.midiState
         ]
+
+
+viewMidiControl : MidiState -> Html Msg
+viewMidiControl midiState =
+    case midiState of
+        NoConnection ->
+            Html.button [ Events.onClick StartMidi ] [ Html.text "Start Midi" ]
+
+        Started ->
+            Html.text "waiting"
+
+        Failed ->
+            Html.text "failed"
+
+
+type MidiState
+    = NoConnection
+    | Started
+    | Failed
 
 
 viewLetter : String -> Html Msg
@@ -186,6 +219,14 @@ frequencyMap char =
 
         _ ->
             Nothing
+
+
+encodeNote : Music.Pitch.Pitch -> Encode.Value
+encodeNote pitch =
+    Encode.object
+        [ ( "noteString", Encode.string (Music.Pitch.toString pitch) )
+        , ( "midiNote", Encode.int (Music.Pitch.toMIDINoteNumber pitch) )
+        ]
 
 
 maybeView : Maybe a -> (a -> Html msg) -> Html msg
