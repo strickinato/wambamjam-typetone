@@ -10,12 +10,15 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 import Keyboard.Event
 import Keyboard.Key
+import LetterStream exposing (LetterStream)
 import Midi
 import Music
 import Music.Pitch
 import Music.PitchClass
 import Music.Scale
 import Music.ScaleType
+import Task
+import Time
 
 
 port sendNote : Encode.Value -> Cmd msg
@@ -45,7 +48,8 @@ main =
 
 type alias Model =
     { currentMusicMode : MusicMode
-    , currentPressedLetter : Maybe String
+    , currentPressedLetter : Maybe Char
+    , letterStream : LetterStream
     , midiState : MidiState
     , internalSynth : Bool
     }
@@ -54,7 +58,9 @@ type alias Model =
 type Msg
     = NoOp
     | KeyPressDown Char Music.Pitch.Pitch
-    | KeyPressUp Music.Pitch.Pitch
+    | KeyPressUp Char Music.Pitch.Pitch
+    | KeyAddToLetterStream Char Time.Posix
+    | TickLetterStream Time.Posix
     | SynthToggle Bool
     | MidiStart
     | MidiSelectPort Midi.Port
@@ -80,6 +86,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     ( { currentMusicMode = { pitchClass = Music.PitchClass.c, scaleType = Music.ScaleType.major }
       , currentPressedLetter = Nothing
+      , letterStream = LetterStream.init
       , internalSynth = True
       , midiState = NoConnection
       }
@@ -91,27 +98,42 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         KeyPressDown char pitch ->
-            ( { model | currentPressedLetter = char |> String.fromChar |> Just }
-            , sendNote
-                (encodeNote
-                    { midiId = getCurrentMidiId model
-                    , synthEnabled = model.internalSynth
-                    , pitch = pitch
-                    , on = True
-                    }
-                )
+            ( model
+            , Cmd.batch
+                [ sendNote
+                    (encodeNote
+                        { midiId = getCurrentMidiId model
+                        , synthEnabled = model.internalSynth
+                        , pitch = pitch
+                        , on = True
+                        }
+                    )
+                , Task.perform (KeyAddToLetterStream char) Time.now
+                ]
             )
 
-        KeyPressUp pitch ->
-            ( { model | currentPressedLetter = Nothing }
-            , sendNote
-                (encodeNote
-                    { midiId = getCurrentMidiId model
-                    , synthEnabled = model.internalSynth
-                    , pitch = pitch
-                    , on = False
-                    }
-                )
+        KeyPressUp char pitch ->
+            ( { model | letterStream = LetterStream.diminish model.letterStream }
+            , Cmd.batch
+                [ sendNote
+                    (encodeNote
+                        { midiId = getCurrentMidiId model
+                        , synthEnabled = model.internalSynth
+                        , pitch = pitch
+                        , on = False
+                        }
+                    )
+                ]
+            )
+
+        KeyAddToLetterStream char posix ->
+            ( { model | letterStream = LetterStream.append ( char, posix ) model.letterStream }
+            , Cmd.none
+            )
+
+        TickLetterStream posix ->
+            ( { model | letterStream = LetterStream.tick posix model.letterStream }
+            , Cmd.none
             )
 
         SynthToggle bool ->
@@ -188,7 +210,7 @@ view model =
             , fontFamily monospace
             ]
         ]
-        [ viewLetter model.currentPressedLetter
+        [ viewLetterStream model.letterStream
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
             [ viewMusicMode model.currentMusicMode
             , viewInternalSynth model.internalSynth
@@ -256,14 +278,19 @@ viewMidiControl midiState =
                 Html.text ("Failed:" ++ str)
 
 
-viewLetter : Maybe String -> Html Msg
-viewLetter maybeLetter =
+viewLetterStream : LetterStream -> Html Msg
+viewLetterStream letterStream =
     let
+        toFadedLetter time ( char, setTime ) =
+            let
+                normal =
+                    1 - toFloat (Time.posixToMillis time - Time.posixToMillis setTime) / 1000
+            in
+            Html.span [ css [ opacity (num normal) ] ] [ Html.text (String.fromChar char) ]
+
         internal =
-            Html.div [ css [ minHeight (px 100), fontSize (px 72) ] ]
-                [ maybeView maybeLetter
-                    Html.text
-                ]
+            Html.div [ css [ minHeight (px 100), fontSize (px 72), textAlign right ] ]
+                (List.reverse <| LetterStream.mapToList toFadedLetter letterStream)
     in
     section "LETTER" internal
 
@@ -288,6 +315,11 @@ subscriptions model =
         [ Browser.Events.onKeyDown (Keyboard.Event.considerKeyboardEvent (handleDown model))
         , Browser.Events.onKeyUp (Keyboard.Event.considerKeyboardEvent (handleUp model))
         , midiReceivedInfo MidiReceivedInfo
+        , if (not << LetterStream.isEmpty) model.letterStream then
+            Browser.Events.onAnimationFrame TickLetterStream
+
+          else
+            Sub.none
         ]
 
 
@@ -324,7 +356,7 @@ handleUp model event =
             if Char.isAlpha keyChar || keyChar == ' ' then
                 event
                     |> keyboardToNote model
-                    |> Maybe.map KeyPressUp
+                    |> Maybe.map (KeyPressUp keyChar)
 
             else
                 Nothing
