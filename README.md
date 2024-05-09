@@ -1,12 +1,14 @@
 # Wam Jam Hackathon
 
 
-# RUNNING THIS:
+
+# run it locally:
 
 `npm install`
 `npm run dev` -- for live watching
 `npm run serve` -- for prod build
 
+# Don't worry about below
 
 Random ideas:
 
