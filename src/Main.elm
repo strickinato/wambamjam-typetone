@@ -606,9 +606,9 @@ importanceToDegree importance scale =
 
         normalized =
             (toFloat importance / toFloat 27)
-                |> Ease.outBack
+                |> Ease.bezier 0.45 0.01 0.65 1
     in
-    ceiling (normalized * toFloat scaleSize)
+    floor (normalized * toFloat scaleSize)
 
 
 toChar : String -> Maybe Char
