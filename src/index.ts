@@ -9,14 +9,29 @@ const synth = new Tone.Synth().toDestination();
 
 let savedMidiAccess
 
+app.ports.allNotesOff.subscribe((data) => {
+  console.log("BUTT")
+  if (savedMidiAccess !== undefined) {
+    const output = savedMidiAccess.outputs.forEach( output => {
+      output.send([0xB0, 123, 0])
+    })
+  }
+})
+
 app.ports.sendNote.subscribe((data) => {
-  if (data.synthEnabled) {
+  if (data.synthEnabled && data.on) {
     synth.triggerAttackRelease(data.noteFreq, "8n");
   }
   if (savedMidiAccess !== undefined && data.midiId !== undefined) {
     const output = savedMidiAccess.outputs.get(data.midiId)
     if (output) {
-      output.send([0x90, data.midiNote, 0x7f])
+      if (data.on) {
+        console.log('starting', data.midiNote)
+        output.send([0x90, data.midiNote, 0x7f])
+      } else {
+        console.log('ending', data.midiNote)
+        output.send([0x83, data.midiNote, 0x7f])
+      }
     }
   }
 })

@@ -21,6 +21,9 @@ import Music.ScaleType
 port sendNote : Encode.Value -> Cmd msg
 
 
+port allNotesOff : () -> Cmd msg
+
+
 port startMidi : () -> Cmd msg
 
 
@@ -50,12 +53,13 @@ type alias Model =
 
 type Msg
     = NoOp
-    | HandleKeyPress Keyboard.Event.KeyboardEvent
-    | ReleaseKey
+    | KeyPressDown Char Music.Pitch.Pitch
+    | KeyPressUp Music.Pitch.Pitch
     | SynthToggle Bool
     | MidiStart
     | MidiSelectPort Midi.Port
     | MidiReceivedInfo Encode.Value
+    | MidiPanic
     | ChangeScaleType Music.ScaleType.ScaleType
 
 
@@ -86,35 +90,29 @@ init _ =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        HandleKeyPress keyboardEvent ->
-            let
-                degree =
-                    keyboardEvent.key
-                        |> Maybe.andThen frequencyMap
-            in
-            case degree of
-                Just degree_ ->
-                    let
-                        note =
-                            getCurrentScale model
-                                |> Music.Scale.degree degree_
-                                |> Music.Pitch.fromPitchClassInOctave 4
-                    in
-                    ( { model | currentPressedLetter = keyboardEvent.key }
-                    , sendNote
-                        (encodeNote
-                            { midiId = getCurrentMidiId model
-                            , synthEnabled = model.internalSynth
-                            , pitch = note
-                            }
-                        )
-                    )
+        KeyPressDown char pitch ->
+            ( { model | currentPressedLetter = char |> String.fromChar |> Just }
+            , sendNote
+                (encodeNote
+                    { midiId = getCurrentMidiId model
+                    , synthEnabled = model.internalSynth
+                    , pitch = pitch
+                    , on = True
+                    }
+                )
+            )
 
-                Nothing ->
-                    ( model, Cmd.none )
-
-        ReleaseKey ->
-            ( { model | currentPressedLetter = Nothing }, Cmd.none )
+        KeyPressUp pitch ->
+            ( { model | currentPressedLetter = Nothing }
+            , sendNote
+                (encodeNote
+                    { midiId = getCurrentMidiId model
+                    , synthEnabled = model.internalSynth
+                    , pitch = pitch
+                    , on = False
+                    }
+                )
+            )
 
         SynthToggle bool ->
             ( { model | internalSynth = bool }, Cmd.none )
@@ -145,6 +143,11 @@ update msg model =
 
                 Err err ->
                     ( { model | midiState = ConnectionFailed (Decode.errorToString err) }, Cmd.none )
+
+        MidiPanic ->
+            ( { model | currentPressedLetter = Nothing }
+            , allNotesOff ()
+            )
 
         ChangeScaleType scaleType ->
             let
@@ -282,35 +285,64 @@ section title internal =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Browser.Events.onKeyDown (Keyboard.Event.considerKeyboardEvent (handle model))
-        , Browser.Events.onKeyUp (Decode.succeed ReleaseKey)
+        [ Browser.Events.onKeyDown (Keyboard.Event.considerKeyboardEvent (handleDown model))
+        , Browser.Events.onKeyUp (Keyboard.Event.considerKeyboardEvent (handleUp model))
         , midiReceivedInfo MidiReceivedInfo
         ]
 
 
-handle : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
-handle model event =
-    let
-        isAlpha =
-            event.keyCode
-                |> Keyboard.Key.toChar
-                |> Maybe.map Char.isAlpha
-                |> Maybe.withDefault False
-    in
-    case event.key |> Maybe.andThen toChar |> Debug.log "char" of
-        Just '}' ->
+handleDown : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
+handleDown model event =
+    case event.key of
+        Just "Escape" ->
+            Just MidiPanic
+
+        Just "}" ->
             Just (ChangeScaleType (Music.nextScaleType model.currentMusicMode.scaleType))
 
+        Just keyStr ->
+            toChar keyStr
+                |> Maybe.andThen
+                    (\char ->
+                        if Char.isAlpha char || char == ' ' then
+                            event
+                                |> keyboardToNote model
+                                |> Maybe.map (KeyPressDown char)
+
+                        else
+                            Nothing
+                    )
+
+        Nothing ->
+            Nothing
+
+
+handleUp : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
+handleUp model event =
+    case event.key |> Maybe.andThen toChar of
         Just keyChar ->
             if Char.isAlpha keyChar || keyChar == ' ' then
-                -- TODO send the Char or represent a note or something
-                Just (HandleKeyPress event)
+                event
+                    |> keyboardToNote model
+                    |> Maybe.map KeyPressUp
 
             else
                 Nothing
 
         Nothing ->
             Nothing
+
+
+keyboardToNote : Model -> Keyboard.Event.KeyboardEvent -> Maybe Music.Pitch.Pitch
+keyboardToNote model event =
+    event.key
+        |> Maybe.andThen frequencyMap
+        |> Maybe.map
+            (\degree_ ->
+                getCurrentScale model
+                    |> Music.Scale.degree degree_
+                    |> Music.Pitch.fromPitchClassInOctave 4
+            )
 
 
 toChar : String -> Maybe Char
@@ -413,12 +445,13 @@ frequencyMap char =
             Nothing
 
 
-encodeNote : { midiId : Maybe String, synthEnabled : Bool, pitch : Music.Pitch.Pitch } -> Encode.Value
-encodeNote { synthEnabled, midiId, pitch } =
+encodeNote : { midiId : Maybe String, synthEnabled : Bool, pitch : Music.Pitch.Pitch, on : Bool } -> Encode.Value
+encodeNote { synthEnabled, midiId, pitch, on } =
     Encode.object
         [ ( "noteFreq", Encode.float (Music.Pitch.toFrequency pitch) )
         , ( "midiNote", Encode.int (Music.Pitch.toMIDINoteNumber pitch) )
         , ( "synthEnabled", Encode.bool synthEnabled )
+        , ( "on", Encode.bool on )
         , case midiId of
             Just midiId_ ->
                 ( "midiId", Encode.string midiId_ )
