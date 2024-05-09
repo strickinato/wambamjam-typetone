@@ -58,11 +58,13 @@ type alias Model =
     , internalSynth : Bool
     , xyzControl : XYZControl
     , windowSize : ( Int, Int )
+    , displaySetting : DisplaySetting
     }
 
 
 type Msg
     = NoOp
+    | DisplaySettingNext
     | KeyPressDown Char Music.Pitch.Pitch
     | KeyPressUp Char Music.Pitch.Pitch
     | KeyAddToLetterStream Char Time.Posix
@@ -96,6 +98,12 @@ type alias Flags =
     }
 
 
+type DisplaySetting
+    = All
+    | Minimal
+    | None
+
+
 init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( { currentMusicMode = { pitchClass = Music.PitchClass.c, scaleType = Music.ScaleType.major }
@@ -105,6 +113,7 @@ init flags =
       , midiState = NoConnection
       , xyzControl = { x = 0.5, y = 0.5, z = 0.5 }
       , windowSize = ( flags.windowX, flags.windowY )
+      , displaySetting = All
       }
     , Cmd.none
     )
@@ -113,6 +122,21 @@ init flags =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        DisplaySettingNext ->
+            let
+                next =
+                    case model.displaySetting of
+                        All ->
+                            Minimal
+
+                        Minimal ->
+                            None
+
+                        None ->
+                            All
+            in
+            ( { model | displaySetting = next }, Cmd.none )
+
         KeyPressDown char pitch ->
             ( model
             , Cmd.batch
@@ -232,6 +256,21 @@ getCurrentScale { currentMusicMode } =
 
 view : Model -> Html Msg
 view model =
+    let
+        displayWithSetting important html =
+            case ( model.displaySetting, important ) of
+                ( All, _ ) ->
+                    html
+
+                ( Minimal, True ) ->
+                    html
+
+                ( Minimal, False ) ->
+                    Html.text ""
+
+                ( None, _ ) ->
+                    Html.text ""
+    in
     Html.div
         [ css
             [ displayFlex
@@ -241,24 +280,25 @@ view model =
             , backgroundColor colors.black
             , color colors.green
             , fontFamily monospace
+            , paddingTop (px 24)
             ]
         , Events.preventDefaultOn "wheel" (handleWheel model |> Decode.map (\d -> ( d, True )))
         ]
-        [ viewLetterStream model.letterStream
+        [ viewLetterStream model.displaySetting model.letterStream
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
-            [ viewMusicMode model.currentMusicMode
-            , viewInternalSynth model.internalSynth
-            , viewXYControl model.xyzControl
-            , viewMidiControl model.midiState
+            [ displayWithSetting False <| viewMusicMode model.currentMusicMode
+            , displayWithSetting False <| viewInternalSynth model.internalSynth
+            , displayWithSetting False <| viewMidiControl model.midiState
+            , displayWithSetting True <| viewXYControl model.displaySetting model.xyzControl
             ]
         ]
 
 
-viewXYControl : XYZControl -> Html Msg
-viewXYControl xy =
-    section "XYZ" <|
-        Html.div [ css [ paddingTop (px 8), displayFlex, gap ] ]
-            [ Html.div [ css [ displayFlex, flexDirection column, gap ] ]
+viewXYControl : DisplaySetting -> XYZControl -> Html Msg
+viewXYControl displaySetting xy =
+    let
+        visualization =
+            Html.div [ css [ displayFlex, flexDirection column, gap ] ]
                 [ Html.div
                     [ css
                         [ border3 (px 1) solid colors.green
@@ -299,12 +339,24 @@ viewXYControl xy =
                         []
                     ]
                 ]
-            , Html.div []
-                [ Html.p [] [ Html.text "x: distortion" ]
-                , Html.p [] [ Html.text "y: filter" ]
-                , Html.p [] [ Html.text "z: delay" ]
-                ]
-            ]
+    in
+    case displaySetting of
+        None ->
+            Html.text ""
+
+        Minimal ->
+            Html.div [ css [ paddingLeft (px 8) ] ] [ visualization ]
+
+        All ->
+            section "XYZ" <|
+                Html.div [ css [ paddingTop (px 8), displayFlex, gap ] ]
+                    [ visualization
+                    , Html.div []
+                        [ Html.p [] [ Html.text "x: filter" ]
+                        , Html.p [] [ Html.text "y: distortion" ]
+                        , Html.p [] [ Html.text "z: delay time" ]
+                        ]
+                    ]
 
 
 viewMusicMode : MusicMode -> Html Msg
@@ -366,8 +418,8 @@ viewMidiControl midiState =
                 Html.text ("Failed:" ++ str)
 
 
-viewLetterStream : LetterStream -> Html Msg
-viewLetterStream letterStream =
+viewLetterStream : DisplaySetting -> LetterStream -> Html Msg
+viewLetterStream displaySetting letterStream =
     let
         toFadedLetter time ( char, setTime ) =
             let
@@ -380,7 +432,15 @@ viewLetterStream letterStream =
             Html.div [ css [ minHeight (px 100), fontSize (px 72), textAlign right ] ]
                 (List.reverse <| LetterStream.mapToList toFadedLetter letterStream)
     in
-    section "LETTER" internal
+    case displaySetting of
+        All ->
+            section "LETTER" internal
+
+        Minimal ->
+            Html.div [ css [ width (px 400) ] ] [ internal ]
+
+        None ->
+            Html.div [ css [ width (px 400) ] ] [ internal ]
 
 
 section : String -> Html Msg -> Html Msg
@@ -389,7 +449,7 @@ section title internal =
         [ css
             [ border3 (px 1) solid colors.black
             , width (px 400)
-            , paddingLeft (px 8)
+            , paddingLeft (px 24)
             ]
         ]
         [ Html.div [ css [ borderBottom3 (px 1) solid colors.green ] ] [ Html.text title ]
@@ -446,12 +506,15 @@ handleMouse model =
 
 handleDown : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
 handleDown model event =
-    case event.key of
+    case Debug.log "key" event.key of
         Just "Escape" ->
             Just MidiPanic
 
         Just "}" ->
             Just (ChangeScaleType (Music.nextScaleType model.currentMusicMode.scaleType))
+
+        Just "?" ->
+            Just DisplaySettingNext
 
         Just keyStr ->
             toChar keyStr
