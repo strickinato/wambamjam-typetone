@@ -288,12 +288,25 @@ view model =
         ]
         [ viewLetterStream model.displaySetting model.letterStream
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
-            [ displayWithSetting False <| viewMusicMode model.currentMusicMode
+            [ displayWithSetting False <| viewHelp
+            , displayWithSetting False <| viewMusicMode model.currentMusicMode
             , displayWithSetting False <| viewInternalSynth model.internalSynth
             , displayWithSetting False <| viewMidiControl model.midiState
             , displayWithSetting True <| viewXYControl model.displaySetting model.xyzControl
             ]
         ]
+
+
+viewHelp : Html Msg
+viewHelp =
+    section "HELP" <|
+        Html.div []
+            [ Html.p [] [ Html.text "Type words to make interesting melodies" ]
+            , Html.p [] [ Html.text "Use the mouse as an XY controller" ]
+            , Html.p [] [ Html.text "Use the mousewheel for Z control" ]
+            , Html.p [] [ Html.text "Change musical settings with '<>{}[]'" ]
+            , Html.p [] [ Html.text "Change display settings with '?'" ]
+            ]
 
 
 viewXYControl : DisplaySetting -> XYZControl -> Html Msg
@@ -432,15 +445,7 @@ viewLetterStream displaySetting letterStream =
             Html.div [ css [ minHeight (px 100), fontSize (px 72), textAlign right ] ]
                 (List.reverse <| LetterStream.mapToList toFadedLetter letterStream)
     in
-    case displaySetting of
-        All ->
-            section "LETTER" internal
-
-        Minimal ->
-            Html.div [ css [ width (px 400) ] ] [ internal ]
-
-        None ->
-            Html.div [ css [ width (px 400) ] ] [ internal ]
+    Html.div [ css [ width (px 400) ] ] [ internal ]
 
 
 section : String -> Html Msg -> Html Msg
