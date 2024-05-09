@@ -287,7 +287,7 @@ view model =
         , Events.preventDefaultOn "wheel" (handleWheel model |> Decode.map (\d -> ( d, True )))
         ]
         [ viewLetterStream model.displaySetting model.letterStream
-        , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
+        , Html.div [ css [ displayFlex, flexDirection column, gap 24 ] ]
             [ displayWithSetting False <| viewHelp
             , displayWithSetting False <| viewMusicMode model.currentMusicMode
             , displayWithSetting False <| viewInternalSynth model.internalSynth
@@ -299,13 +299,26 @@ view model =
 
 viewHelp : Html Msg
 viewHelp =
-    section "HELP" <|
+    section "ABOUT" <|
         Html.div []
             [ Html.p [] [ Html.text "Type words to make interesting melodies" ]
+            , Html.p [] [ Html.text "--------" ]
             , Html.p [] [ Html.text "Use the mouse as an XY controller" ]
-            , Html.p [] [ Html.text "Use the mousewheel for Z control" ]
+            , Html.p [] [ Html.text "Use the mousewheel as Z controller" ]
             , Html.p [] [ Html.text "Change musical settings with '<>{}[]'" ]
             , Html.p [] [ Html.text "Change display settings with '?'" ]
+            , Html.p [] [ Html.text "--------" ]
+            , Html.p []
+                [ Html.text "Made at the "
+                , Html.a [ Attributes.href "https://recurse.com" ] [ Html.text "recurse center" ]
+                ]
+            , Html.p [] [ Html.text "Here's the ", Html.a [ Attributes.href "https://github.com/strickinato/wambamjam-typetone" ] [ Html.text "source code" ] ]
+            , Html.p []
+                [ Html.text "Uses "
+                , Html.a [ Attributes.href "https://elm-lang.org" ] [ Html.text "elm" ]
+                , Html.text " and "
+                , Html.a [ Attributes.href "https://tonejs.github.io/" ] [ Html.text "tone.js" ]
+                ]
             ]
 
 
@@ -313,7 +326,7 @@ viewXYControl : DisplaySetting -> XYZControl -> Html Msg
 viewXYControl displaySetting xy =
     let
         visualization =
-            Html.div [ css [ displayFlex, flexDirection column, gap ] ]
+            Html.div [ css [ displayFlex, flexDirection column, gap 8 ] ]
                 [ Html.div
                     [ css
                         [ border3 (px 1) solid colors.green
@@ -364,7 +377,7 @@ viewXYControl displaySetting xy =
 
         All ->
             section "XYZ" <|
-                Html.div [ css [ paddingTop (px 8), displayFlex, gap ] ]
+                Html.div [ css [ paddingTop (px 8), displayFlex, gap 8 ] ]
                     [ visualization
                     , Html.div []
                         [ Html.p [] [ Html.text "x: filter" ]
@@ -728,5 +741,5 @@ colors =
     { green = rgb 0 255 0, black = rgb 0 0 0 }
 
 
-gap =
-    property "gap" "8px"
+gap int =
+    property "gap" (String.fromInt int ++ "px")
