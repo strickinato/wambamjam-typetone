@@ -5,6 +5,10 @@ import Music.Scale as Scale exposing (Scale)
 import Music.ScaleType as ScaleType exposing (ScaleType)
 
 
+
+-- This section is a shame, but it's a whole in the Music Theory API
+
+
 nextScaleType : ScaleType -> ScaleType
 nextScaleType scaleType =
     if scaleType == ScaleType.major then
@@ -18,6 +22,21 @@ nextScaleType scaleType =
 
     else
         ScaleType.major
+
+
+scaleTypeToString : ScaleType -> String
+scaleTypeToString scaleType =
+    if scaleType == ScaleType.major then
+        "Major"
+
+    else if scaleType == ScaleType.minor then
+        "Minor"
+
+    else if scaleType == ScaleType.harmonicMinor then
+        "Harmonic Minor"
+
+    else
+        ""
 
 
 

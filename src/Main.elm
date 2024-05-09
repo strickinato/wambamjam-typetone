@@ -187,62 +187,70 @@ view model =
         ]
         [ viewLetter model.currentPressedLetter
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
-            [ viewInternalSynth model.internalSynth
+            [ viewMusicMode model.currentMusicMode
+            , viewInternalSynth model.internalSynth
             , viewMidiControl model.midiState
             ]
         ]
 
 
+viewMusicMode : MusicMode -> Html Msg
+viewMusicMode { scaleType, pitchClass } =
+    section "MUSIC" <|
+        Html.div []
+            [ Html.text
+                (Music.PitchClass.toString pitchClass
+                    ++ " "
+                    ++ Music.scaleTypeToString scaleType
+                )
+            ]
+
+
 viewInternalSynth : Bool -> Html Msg
 viewInternalSynth enabled =
-    let
-        internal =
-            Html.div []
-                [ Html.input
-                    [ Attributes.type_ "checkbox"
-                    , Attributes.checked enabled
-                    , Events.onCheck SynthToggle
-                    ]
-                    []
+    section "SYNTH" <|
+        Html.div []
+            [ Html.input
+                [ Attributes.type_ "checkbox"
+                , Attributes.checked enabled
+                , Events.onCheck SynthToggle
                 ]
-    in
-    section "SYNTH" internal
+                []
+            ]
 
 
 viewMidiControl : MidiState -> Html Msg
 viewMidiControl midiState =
-    let
-        viewPort maybeSelected port_ =
-            let
-                portDisplayName =
-                    if maybeSelected == Just port_ then
-                        "**" ++ port_.name
+    section "MIDI" <|
+        let
+            viewPort maybeSelected port_ =
+                let
+                    portDisplayName =
+                        if maybeSelected == Just port_ then
+                            "**" ++ port_.name
 
-                    else
-                        port_.name
-            in
-            Html.div
-                [ css [ cursor pointer ]
-                , Attributes.tabindex 0
-                , Events.onClick (MidiSelectPort port_)
-                ]
-                [ Html.text portDisplayName ]
+                        else
+                            port_.name
+                in
+                Html.div
+                    [ css [ cursor pointer ]
+                    , Attributes.tabindex 0
+                    , Events.onClick (MidiSelectPort port_)
+                    ]
+                    [ Html.text portDisplayName ]
+        in
+        case midiState of
+            NoConnection ->
+                Html.button [ Events.onClick MidiStart ] [ Html.text "Start Midi" ]
 
-        internal =
-            case midiState of
-                NoConnection ->
-                    Html.button [ Events.onClick MidiStart ] [ Html.text "Start Midi" ]
+            Started ->
+                Html.text "waiting"
 
-                Started ->
-                    Html.text "waiting"
+            ConnectionMade info maybeSelectedPort enabled ->
+                Html.div [] (List.map (viewPort maybeSelectedPort) info)
 
-                ConnectionMade info maybeSelectedPort enabled ->
-                    Html.div [] (List.map (viewPort maybeSelectedPort) info)
-
-                ConnectionFailed str ->
-                    Html.text ("Failed:" ++ str)
-    in
-    section "MIDI" internal
+            ConnectionFailed str ->
+                Html.text ("Failed:" ++ str)
 
 
 viewLetter : Maybe String -> Html Msg
