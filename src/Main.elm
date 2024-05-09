@@ -74,7 +74,7 @@ type Msg
     | MidiSelectPort Midi.Port
     | MidiReceivedInfo Encode.Value
     | MidiPanic
-    | ChangeScaleType Music.ScaleType.ScaleType
+    | MusicModeChange MusicMode
     | XYControlMove ( Float, Float, Float )
     | WindowSizeChange ( Int, Int )
 
@@ -211,12 +211,8 @@ update msg model =
             , allNotesOff ()
             )
 
-        ChangeScaleType scaleType ->
-            let
-                oldMode =
-                    model.currentMusicMode
-            in
-            ( { model | currentMusicMode = { oldMode | scaleType = scaleType } }, Cmd.none )
+        MusicModeChange musicMode ->
+            ( { model | currentMusicMode = musicMode }, Cmd.none )
 
         XYControlMove ( x, y, z ) ->
             let
@@ -251,7 +247,7 @@ getCurrentMidiId { midiState } =
 
 getCurrentScale : Model -> Music.Scale.Scale
 getCurrentScale { currentMusicMode } =
-    Music.scaleTypeConstructor currentMusicMode.scaleType Music.PitchClass.c
+    Music.scaleTypeConstructor currentMusicMode.scaleType currentMusicMode.pitchClass
 
 
 view : Model -> Html Msg
@@ -505,13 +501,22 @@ handleMouse model =
 
 
 handleDown : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
-handleDown model event =
+handleDown ({ currentMusicMode } as model) event =
     case Debug.log "key" event.key of
         Just "Escape" ->
             Just MidiPanic
 
         Just "}" ->
-            Just (ChangeScaleType (Music.nextScaleType model.currentMusicMode.scaleType))
+            Just (MusicModeChange { currentMusicMode | scaleType = Music.nextScaleType currentMusicMode.scaleType })
+
+        Just "{" ->
+            Just (MusicModeChange { currentMusicMode | scaleType = Music.prevScaleType currentMusicMode.scaleType })
+
+        Just "]" ->
+            Just (MusicModeChange { currentMusicMode | pitchClass = Music.nextRoot currentMusicMode.pitchClass })
+
+        Just "[" ->
+            Just (MusicModeChange { currentMusicMode | pitchClass = Music.prevRoot currentMusicMode.pitchClass })
 
         Just "?" ->
             Just DisplaySettingNext
@@ -556,6 +561,7 @@ keyboardToNote model event =
         |> Maybe.map
             (\degree_ ->
                 getCurrentScale model
+                    |> Debug.log "Scale"
                     |> Music.Scale.degree degree_
                     |> Music.Pitch.fromPitchClassInOctave 4
             )
