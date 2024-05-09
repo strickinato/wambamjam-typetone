@@ -83,6 +83,7 @@ type Msg
 type alias MusicMode =
     { pitchClass : Music.PitchClass.PitchClass
     , scaleType : Music.ScaleType.ScaleType
+    , octave : Int
     }
 
 
@@ -107,7 +108,11 @@ type DisplaySetting
 
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( { currentMusicMode = { pitchClass = Music.PitchClass.c, scaleType = Music.ScaleType.major }
+    ( { currentMusicMode =
+            { pitchClass = Music.PitchClass.c
+            , scaleType = Music.ScaleType.major
+            , octave = 4
+            }
       , currentPressedLetter = Nothing
       , letterStream = LetterStream.init
       , internalSynth = True
@@ -357,14 +362,12 @@ viewXYControl displaySetting xy =
 
 
 viewMusicMode : MusicMode -> Html Msg
-viewMusicMode { scaleType, pitchClass } =
+viewMusicMode { scaleType, pitchClass, octave } =
     section "MUSIC" <|
         Html.div []
-            [ Html.text
-                (Music.PitchClass.toString pitchClass
-                    ++ " "
-                    ++ Music.scaleTypeToString scaleType
-                )
+            [ Html.p [] [ Html.text <| "[ ] root...." ++ Music.PitchClass.toString pitchClass ]
+            , Html.p [] [ Html.text <| "{ } scale..." ++ Music.scaleTypeToString scaleType ]
+            , Html.p [] [ Html.text <| "< > octave.." ++ String.fromInt octave ]
             ]
 
 
@@ -519,6 +522,12 @@ handleDown ({ currentMusicMode } as model) event =
         Just "[" ->
             Just (MusicModeChange { currentMusicMode | pitchClass = Music.prevRoot currentMusicMode.pitchClass })
 
+        Just ">" ->
+            Just (MusicModeChange { currentMusicMode | octave = min (currentMusicMode.octave + 1) 5 })
+
+        Just "<" ->
+            Just (MusicModeChange { currentMusicMode | octave = max (currentMusicMode.octave - 1) 1 })
+
         Just "?" ->
             Just DisplaySettingNext
 
@@ -567,7 +576,7 @@ keyboardToNote model event =
                 in
                 getCurrentScale model
                     |> Music.Scale.degree (Debug.log "degree" degree_)
-                    |> Music.Pitch.fromPitchClassInOctave 4
+                    |> Music.Pitch.fromPitchClassInOctave model.currentMusicMode.octave
             )
 
 
