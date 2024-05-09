@@ -24,7 +24,7 @@ const tremolo = new Tone.Tremolo({frequency: '100hz'})
 const delay = new Tone.FeedbackDelay({delayTime: 0.2, wet: 0.3})
 const reverb = new Tone.Reverb({decay: 1, wet: 0.5})
 reverb.generate();
-synth.chain( filter, distortion, delay,  reverb, Tone.Master)
+synth.chain(filter, distortion, delay, reverb, Tone.Master)
 
 function normalToFreq(float) {
   const midiScale = Math.floor(float * 90) + 20
