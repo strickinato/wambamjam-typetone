@@ -12,32 +12,30 @@ import Music.ScaleType as ScaleType exposing (ScaleType)
 
 nextScaleType : ScaleType -> ScaleType
 nextScaleType scaleType =
-    if scaleType == ScaleType.major then
-        ScaleType.minor
-
-    else if scaleType == ScaleType.minor then
-        ScaleType.harmonicMinor
-
-    else if scaleType == ScaleType.harmonicMinor then
-        ScaleType.major
-
-    else
-        ScaleType.major
+    nextInList
+        (\( scaleType_, _ ) -> scaleType == scaleType_)
+        allScaleOptions
+        ( ScaleType.major, "Major" )
+        |> Tuple.first
 
 
 prevScaleType : ScaleType -> ScaleType
 prevScaleType scaleType =
-    if scaleType == ScaleType.major then
-        ScaleType.harmonicMinor
+    prevInList
+        (\( scaleType_, _ ) -> scaleType == scaleType_)
+        allScaleOptions
+        ( ScaleType.major, "Major" )
+        |> Tuple.first
 
-    else if scaleType == ScaleType.minor then
-        ScaleType.major
 
-    else if scaleType == ScaleType.harmonicMinor then
-        ScaleType.minor
-
-    else
-        ScaleType.harmonicMinor
+allScaleOptions : List ( ScaleType, String )
+allScaleOptions =
+    [ ( ScaleType.major, "Major" )
+    , ( ScaleType.minor, "Minor" )
+    , ( ScaleType.harmonicMinor, "Harmonic Minor" )
+    , ( ScaleType.majorPentatonic, "Major Pentatonic" )
+    , ( ScaleType.minorPentatonic, "Minor Pentatonic" )
+    ]
 
 
 allPitchClasses : List PitchClass
@@ -75,20 +73,22 @@ prevRoot currentPitchClass =
 
 scaleTypeToString : ScaleType -> String
 scaleTypeToString scaleType =
-    if scaleType == ScaleType.major then
-        "Major"
-
-    else if scaleType == ScaleType.minor then
-        "Minor"
-
-    else if scaleType == ScaleType.harmonicMinor then
-        "Harmonic Minor"
-
-    else
-        ""
+    List.Extra.find (\( scaleType_, _ ) -> scaleType == scaleType_) allScaleOptions
+        |> Maybe.map Tuple.second
+        |> Maybe.withDefault ""
 
 
 
+-- if scaleType == ScaleType.major then
+--     "Major"
+-- else if scaleType == ScaleType.minor then
+--     "Minor"
+-- else if scaleType == ScaleType.harmonicMinor then
+--     "Harmonic Minor"
+-- else if scaleType == ScaleType.harmonicMinor then
+--     "Harmonic Minor"
+-- else
+--     ""
 -- TODO add more interesting scales
 -- Can do pentatonic and blues
 -- once my keyboard mappings take size of scale into account

@@ -3,6 +3,7 @@ port module Main exposing (..)
 import Browser
 import Browser.Events
 import Css exposing (..)
+import Ease
 import Html.Styled as Html exposing (Attribute, Html)
 import Html.Styled.Attributes as Attributes exposing (css)
 import Html.Styled.Events as Events
@@ -559,12 +560,28 @@ keyboardToNote model event =
     event.key
         |> Maybe.andThen frequencyMap
         |> Maybe.map
-            (\degree_ ->
+            (\importance ->
+                let
+                    degree_ =
+                        importanceToDegree importance (getCurrentScale model)
+                in
                 getCurrentScale model
-                    |> Debug.log "Scale"
-                    |> Music.Scale.degree degree_
+                    |> Music.Scale.degree (Debug.log "degree" degree_)
                     |> Music.Pitch.fromPitchClassInOctave 4
             )
+
+
+importanceToDegree : Int -> Music.Scale.Scale -> Int
+importanceToDegree importance scale =
+    let
+        scaleSize =
+            List.length (Music.Scale.toList scale)
+
+        normalized =
+            (toFloat importance / toFloat 27)
+                |> Ease.outBack
+    in
+    ceiling (normalized * toFloat scaleSize)
 
 
 toChar : String -> Maybe Char
@@ -586,82 +603,82 @@ frequencyMap char =
             Just 1
 
         "E" ->
-            Just 1
+            Just 2
 
         "A" ->
-            Just 1
+            Just 3
 
         "R" ->
-            Just 1
+            Just 4
 
         "I" ->
-            Just 3
+            Just 5
 
         "O" ->
-            Just 3
+            Just 6
 
         "T" ->
-            Just 3
+            Just 7
 
         "N" ->
-            Just 3
+            Just 8
 
         "S" ->
-            Just 5
+            Just 9
 
         "L" ->
-            Just 5
+            Just 10
 
         "C" ->
-            Just 5
+            Just 11
 
         "U" ->
-            Just 5
+            Just 12
 
         "D" ->
-            Just 5
+            Just 13
 
         "P" ->
-            Just 2
+            Just 14
 
         "M" ->
-            Just 2
+            Just 15
 
         "H" ->
-            Just 2
+            Just 16
 
         "G" ->
-            Just 4
+            Just 17
 
         "B" ->
-            Just 4
+            Just 18
 
         "F" ->
-            Just 4
+            Just 19
 
         "Y" ->
-            Just 4
+            Just 20
 
         "W" ->
-            Just 6
+            Just 21
 
         "K" ->
-            Just 6
+            Just 22
 
         "V" ->
-            Just 6
+            Just 23
 
         "X" ->
-            Just 6
+            Just 23
 
         "Z" ->
-            Just 7
+            Just 25
 
         "J" ->
-            Just 7
+            Just 26
 
         "Q" ->
-            Just 7
+            Just 27
 
         _ ->
             Nothing
