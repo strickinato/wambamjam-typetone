@@ -11,7 +11,7 @@ let savedMidiAccess
 
 app.ports.sendNote.subscribe((data) => {
   if (data.synthEnabled) {
-    synth.triggerAttackRelease(data.noteString, "8n");
+    synth.triggerAttackRelease(data.noteFreq, "8n");
   }
   if (savedMidiAccess !== undefined && data.midiId !== undefined) {
     const output = savedMidiAccess.outputs.get(data.midiId)

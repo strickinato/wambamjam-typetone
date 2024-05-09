@@ -9,10 +9,13 @@ import Html.Styled.Events as Events
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Keyboard.Event
+import Keyboard.Key
 import Midi
+import Music
 import Music.Pitch
 import Music.PitchClass
 import Music.Scale
+import Music.ScaleType
 
 
 port sendNote : Encode.Value -> Cmd msg
@@ -38,7 +41,7 @@ main =
 
 
 type alias Model =
-    { currentScale : Music.Scale.Scale
+    { currentMusicMode : MusicMode
     , currentPressedLetter : Maybe String
     , midiState : MidiState
     , internalSynth : Bool
@@ -53,6 +56,13 @@ type Msg
     | MidiStart
     | MidiSelectPort Midi.Port
     | MidiReceivedInfo Encode.Value
+    | ChangeScaleType Music.ScaleType.ScaleType
+
+
+type alias MusicMode =
+    { pitchClass : Music.PitchClass.PitchClass
+    , scaleType : Music.ScaleType.ScaleType
+    }
 
 
 type MidiState
@@ -64,7 +74,7 @@ type MidiState
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( { currentScale = Music.Scale.major Music.PitchClass.c
+    ( { currentMusicMode = { pitchClass = Music.PitchClass.c, scaleType = Music.ScaleType.major }
       , currentPressedLetter = Nothing
       , internalSynth = True
       , midiState = NoConnection
@@ -86,7 +96,7 @@ update msg model =
                 Just degree_ ->
                     let
                         note =
-                            model.currentScale
+                            getCurrentScale model
                                 |> Music.Scale.degree degree_
                                 |> Music.Pitch.fromPitchClassInOctave 4
                     in
@@ -136,6 +146,13 @@ update msg model =
                 Err err ->
                     ( { model | midiState = ConnectionFailed (Decode.errorToString err) }, Cmd.none )
 
+        ChangeScaleType scaleType ->
+            let
+                oldMode =
+                    model.currentMusicMode
+            in
+            ( { model | currentMusicMode = { oldMode | scaleType = scaleType } }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -148,6 +165,11 @@ getCurrentMidiId { midiState } =
 
         _ ->
             Nothing
+
+
+getCurrentScale : Model -> Music.Scale.Scale
+getCurrentScale { currentMusicMode } =
+    Music.scaleTypeConstructor currentMusicMode.scaleType Music.PitchClass.c
 
 
 view : Model -> Html Msg
@@ -252,10 +274,45 @@ section title internal =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ Browser.Events.onKeyDown (Decode.map HandleKeyPress Keyboard.Event.decodeKeyboardEvent)
+        [ Browser.Events.onKeyDown (Keyboard.Event.considerKeyboardEvent (handle model))
         , Browser.Events.onKeyUp (Decode.succeed ReleaseKey)
         , midiReceivedInfo MidiReceivedInfo
         ]
+
+
+handle : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
+handle model event =
+    let
+        isAlpha =
+            event.keyCode
+                |> Keyboard.Key.toChar
+                |> Maybe.map Char.isAlpha
+                |> Maybe.withDefault False
+    in
+    case event.key |> Maybe.andThen toChar |> Debug.log "char" of
+        Just '}' ->
+            Just (ChangeScaleType (Music.nextScaleType model.currentMusicMode.scaleType))
+
+        Just keyChar ->
+            if Char.isAlpha keyChar || keyChar == ' ' then
+                -- TODO send the Char or represent a note or something
+                Just (HandleKeyPress event)
+
+            else
+                Nothing
+
+        Nothing ->
+            Nothing
+
+
+toChar : String -> Maybe Char
+toChar string =
+    case string |> String.toList of
+        [ x ] ->
+            Just x
+
+        _ ->
+            Nothing
 
 
 {-| letter to degree
@@ -351,7 +408,7 @@ frequencyMap char =
 encodeNote : { midiId : Maybe String, synthEnabled : Bool, pitch : Music.Pitch.Pitch } -> Encode.Value
 encodeNote { synthEnabled, midiId, pitch } =
     Encode.object
-        [ ( "noteString", Encode.string (Music.Pitch.toString pitch) )
+        [ ( "noteFreq", Encode.float (Music.Pitch.toFrequency pitch) )
         , ( "midiNote", Encode.int (Music.Pitch.toMIDINoteNumber pitch) )
         , ( "synthEnabled", Encode.bool synthEnabled )
         , case midiId of
