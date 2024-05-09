@@ -19,6 +19,7 @@ import Music.Scale
 import Music.ScaleType
 import Task
 import Time
+import XYZControl exposing (XYZControl)
 
 
 port sendNote : Encode.Value -> Cmd msg
@@ -55,13 +56,9 @@ type alias Model =
     , letterStream : LetterStream
     , midiState : MidiState
     , internalSynth : Bool
-    , xyController : XYController
+    , xyzControl : XYZControl
     , windowSize : ( Int, Int )
     }
-
-
-type alias XYController =
-    { coords : ( Float, Float ) }
 
 
 type Msg
@@ -76,7 +73,7 @@ type Msg
     | MidiReceivedInfo Encode.Value
     | MidiPanic
     | ChangeScaleType Music.ScaleType.ScaleType
-    | XYControlMove ( Float, Float )
+    | XYControlMove ( Float, Float, Float )
     | WindowSizeChange ( Int, Int )
 
 
@@ -106,7 +103,7 @@ init flags =
       , letterStream = LetterStream.init
       , internalSynth = True
       , midiState = NoConnection
-      , xyController = { coords = ( 0, 0 ) }
+      , xyzControl = { x = 0.5, y = 0.5, z = 0.5 }
       , windowSize = ( flags.windowX, flags.windowY )
       }
     , Cmd.none
@@ -197,15 +194,19 @@ update msg model =
             in
             ( { model | currentMusicMode = { oldMode | scaleType = scaleType } }, Cmd.none )
 
-        XYControlMove (( x, y ) as coords) ->
+        XYControlMove ( x, y, z ) ->
             let
+                { xyzControl } =
+                    model
+
                 encoded =
                     Encode.object
                         [ ( "x", Encode.float x )
                         , ( "y", Encode.float y )
+                        , ( "z", Encode.float z )
                         ]
             in
-            ( { model | xyController = { coords = coords } }, sendXY encoded )
+            ( { model | xyzControl = { xyzControl | x = x, y = y, z = z } }, sendXY encoded )
 
         WindowSizeChange size ->
             ( { model | windowSize = size }, Cmd.none )
@@ -241,40 +242,67 @@ view model =
             , color colors.green
             , fontFamily monospace
             ]
+        , Events.preventDefaultOn "wheel" (handleWheel model |> Decode.map (\d -> ( d, True )))
         ]
         [ viewLetterStream model.letterStream
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
             [ viewMusicMode model.currentMusicMode
             , viewInternalSynth model.internalSynth
-            , viewXYControl model.xyController
+            , viewXYControl model.xyzControl
             , viewMidiControl model.midiState
             ]
         ]
 
 
-viewXYControl : XYController -> Html Msg
+viewXYControl : XYZControl -> Html Msg
 viewXYControl xy =
-    section "XY" <|
-        Html.div [ css [ paddingTop (px 8) ] ]
-            [ Html.div
-                [ css
-                    [ border3 (px 1) solid colors.green
-                    , width (px 100)
-                    , height (px 100)
-                    , position relative
-                    ]
-                ]
+    section "XYZ" <|
+        Html.div [ css [ paddingTop (px 8), displayFlex, gap ] ]
+            [ Html.div [ css [ displayFlex, flexDirection column, gap ] ]
                 [ Html.div
                     [ css
-                        [ position absolute
-                        , width (px 5)
-                        , height (px 5)
-                        , backgroundColor colors.green
-                        , left (px <| Debug.log "val" (Tuple.first xy.coords * 95))
-                        , bottom (px <| Debug.log "val" (Tuple.second xy.coords * 95))
+                        [ border3 (px 1) solid colors.green
+                        , width (px 100)
+                        , height (px 100)
+                        , position relative
                         ]
                     ]
-                    []
+                    [ Html.div
+                        [ css
+                            [ position absolute
+                            , width (px 5)
+                            , height (px 5)
+                            , backgroundColor colors.green
+                            , left (px <| xy.x * 95)
+                            , bottom (px <| xy.y * 95)
+                            ]
+                        ]
+                        []
+                    ]
+                , Html.div
+                    [ css
+                        [ position relative
+                        , width (px 100)
+                        , borderBottom3 (px 1) solid colors.green
+                        ]
+                    ]
+                    [ Html.div
+                        [ css
+                            [ position absolute
+                            , width (px 5)
+                            , height (px 5)
+                            , backgroundColor colors.green
+                            , left (px <| xy.z * 95)
+                            , top (px -2.5)
+                            ]
+                        ]
+                        []
+                    ]
+                ]
+            , Html.div []
+                [ Html.p [] [ Html.text "x: distortion" ]
+                , Html.p [] [ Html.text "y: filter" ]
+                , Html.p [] [ Html.text "z: delay" ]
                 ]
             ]
 
@@ -385,6 +413,23 @@ subscriptions model =
         ]
 
 
+handleWheel : Model -> Decoder Msg
+handleWheel model =
+    Decode.field "deltaY" Decode.float
+        |> Decode.map
+            (\deltaY ->
+                let
+                    { x, y, z } =
+                        model.xyzControl
+
+                    newZ =
+                        ((deltaY / 1000) + model.xyzControl.z)
+                            |> clamp 0 1
+                in
+                XYControlMove ( x, y, newZ )
+            )
+
+
 handleMouse : Model -> Decoder Msg
 handleMouse model =
     Decode.map2
@@ -392,6 +437,7 @@ handleMouse model =
             XYControlMove
                 ( x / toFloat (Tuple.first model.windowSize)
                 , 1 - (y / toFloat (Tuple.second model.windowSize))
+                , model.xyzControl.z
                 )
         )
         (Decode.field "clientX" Decode.float)

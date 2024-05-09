@@ -17,25 +17,31 @@ let savedMidiAccess
 
 // Synth setup
 //
-const synth = new Tone.Synth().toDestination();
-const distortion = new Tone.Distortion(0).toDestination();
-const filter = new Tone.Filter({ type: 'lowpass', Q: 25 }).toDestination();
-const reverb = new Tone.Reverb({decay: 5}).toDestination();
-synth.connect(distortion).connect(filter).connect(reverb);
+const synth = new Tone.Synth()
+const distortion = new Tone.Distortion(0.5)
+const filter = new Tone.Filter({ type: 'lowpass', Q: 15 })
+const tremolo = new Tone.Tremolo({frequency: '100hz'})
+const delay = new Tone.FeedbackDelay({delayTime: 0.2, wet: 0.3})
+const reverb = new Tone.Reverb({decay: 1, wet: 0.5})
+reverb.generate();
+synth.chain( filter, distortion, delay,  reverb, Tone.Master)
 
 function normalToFreq(float) {
-  const midiScale = Math.floor(float * 128)
-
-  return Tone.Frequency(midiScale, "midi").toFrequency();
+  const midiScale = Math.floor(float * 90) + 20
+  const freq = Tone.Frequency(midiScale, "midi").toFrequency();
+  return freq
 
 }
 
 // Port Handlers
 //
 app.ports.sendXY.subscribe((data) => {
-  const cutoff = normalToFreq(data.x)
-  filter.frequency.value = cutoff
-  filter.Q.value = Math.floor(data.y * 30)
+
+  // tremolo.depth.value = data.y
+  // reverb.decay.value = Math.floor(data.x *
+  filter.frequency.value = normalToFreq(data.x)
+  distortion.distortion = data.y
+  delay.delayTime.rampTo(data.z , 0.1)
 })
 
 app.ports.sendNote.subscribe((data) => {
