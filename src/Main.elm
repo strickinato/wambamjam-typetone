@@ -4,11 +4,12 @@ import Browser
 import Browser.Events
 import Css exposing (..)
 import Html.Styled as Html exposing (Attribute, Html)
-import Html.Styled.Attributes as Attributes
+import Html.Styled.Attributes as Attributes exposing (css)
 import Html.Styled.Events as Events
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Keyboard.Event
+import Midi
 import Music.Pitch
 import Music.PitchClass
 import Music.Scale
@@ -18,6 +19,9 @@ port sendNote : Encode.Value -> Cmd msg
 
 
 port startMidi : () -> Cmd msg
+
+
+port midiReceivedInfo : (Encode.Value -> msg) -> Sub msg
 
 
 main =
@@ -37,6 +41,7 @@ type alias Model =
     { currentScale : Music.Scale.Scale
     , currentPressedLetter : Maybe String
     , midiState : MidiState
+    , internalSynth : Bool
     }
 
 
@@ -44,13 +49,24 @@ type Msg
     = NoOp
     | HandleKeyPress Keyboard.Event.KeyboardEvent
     | ReleaseKey
-    | StartMidi
+    | SynthToggle Bool
+    | MidiStart
+    | MidiSelectPort Midi.Port
+    | MidiReceivedInfo Encode.Value
+
+
+type MidiState
+    = NoConnection
+    | Started
+    | ConnectionMade (List Midi.Port) (Maybe Midi.Port) Bool
+    | ConnectionFailed String
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { currentScale = Music.Scale.major Music.PitchClass.c
       , currentPressedLetter = Nothing
+      , internalSynth = True
       , midiState = NoConnection
       }
     , Cmd.none
@@ -75,7 +91,13 @@ update msg model =
                                 |> Music.Pitch.fromPitchClassInOctave 4
                     in
                     ( { model | currentPressedLetter = keyboardEvent.key }
-                    , sendNote (encodeNote note)
+                    , sendNote
+                        (encodeNote
+                            { midiId = getCurrentMidiId model
+                            , synthEnabled = model.internalSynth
+                            , pitch = note
+                            }
+                        )
                     )
 
                 Nothing ->
@@ -84,43 +106,130 @@ update msg model =
         ReleaseKey ->
             ( { model | currentPressedLetter = Nothing }, Cmd.none )
 
-        StartMidi ->
+        SynthToggle bool ->
+            ( { model | internalSynth = bool }, Cmd.none )
+
+        MidiStart ->
             ( { model | midiState = Started }, startMidi () )
+
+        MidiSelectPort port_ ->
+            case model.midiState of
+                ConnectionMade info _ enabled ->
+                    ( { model | midiState = ConnectionMade info (Just port_) enabled }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        MidiReceivedInfo value ->
+            case Decode.decodeValue Midi.decodeInfo value of
+                Ok (Midi.Success info) ->
+                    ( { model
+                        | midiState = ConnectionMade info (List.head info) True
+                        , internalSynth = False
+                      }
+                    , Cmd.none
+                    )
+
+                Ok (Midi.Failed error) ->
+                    ( { model | midiState = ConnectionFailed error }, Cmd.none )
+
+                Err err ->
+                    ( { model | midiState = ConnectionFailed (Decode.errorToString err) }, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
 
 
+getCurrentMidiId : Model -> Maybe String
+getCurrentMidiId { midiState } =
+    case midiState of
+        ConnectionMade _ (Just { id }) True ->
+            Just id
+
+        _ ->
+            Nothing
+
+
 view : Model -> Html Msg
 view model =
-    Html.div []
-        [ viewLetter |> maybeView model.currentPressedLetter
+    Html.div [ css [ displayFlex, flexDirection column, justifyContent spaceBetween, height (pct 100) ] ]
+        [ viewLetter model.currentPressedLetter
+        , viewInternalSynth model.internalSynth
         , viewMidiControl model.midiState
         ]
 
 
+viewInternalSynth : Bool -> Html Msg
+viewInternalSynth enabled =
+    let
+        internal =
+            Html.div []
+                [ Html.input
+                    [ Attributes.type_ "checkbox"
+                    , Attributes.checked enabled
+                    , Events.onCheck SynthToggle
+                    ]
+                    []
+                ]
+    in
+    section "SYNTH" internal
+
+
 viewMidiControl : MidiState -> Html Msg
 viewMidiControl midiState =
-    case midiState of
-        NoConnection ->
-            Html.button [ Events.onClick StartMidi ] [ Html.text "Start Midi" ]
+    let
+        viewPort maybeSelected port_ =
+            let
+                portDisplayName =
+                    if maybeSelected == Just port_ then
+                        "**" ++ port_.name
 
-        Started ->
-            Html.text "waiting"
+                    else
+                        port_.name
+            in
+            Html.div
+                [ css [ cursor pointer ]
+                , Attributes.tabindex 0
+                , Events.onClick (MidiSelectPort port_)
+                ]
+                [ Html.text portDisplayName ]
 
-        Failed ->
-            Html.text "failed"
+        internal =
+            case midiState of
+                NoConnection ->
+                    Html.button [ Events.onClick MidiStart ] [ Html.text "Start Midi" ]
+
+                Started ->
+                    Html.text "waiting"
+
+                ConnectionMade info maybeSelectedPort enabled ->
+                    Html.div [] (List.map (viewPort maybeSelectedPort) info)
+
+                ConnectionFailed str ->
+                    Html.text ("Failed:" ++ str)
+    in
+    section "MIDI" internal
 
 
-type MidiState
-    = NoConnection
-    | Started
-    | Failed
+viewLetter : Maybe String -> Html Msg
+viewLetter maybeLetter =
+    let
+        internal =
+            Html.div [ css [ minHeight (px 100) ] ] [ maybeView maybeLetter Html.text ]
+    in
+    section "LETTER" internal
 
 
-viewLetter : String -> Html Msg
-viewLetter str =
-    Html.div [] [ Html.text str ]
+section : String -> Html Msg -> Html Msg
+section title internal =
+    Html.div
+        [ css
+            [ border3 (px 1) solid (rgb 0 0 0)
+            , width (px 400)
+            , paddingLeft (px 8)
+            ]
+        ]
+        [ Html.div [] [ Html.text title ], internal ]
 
 
 subscriptions : Model -> Sub Msg
@@ -128,6 +237,7 @@ subscriptions model =
     Sub.batch
         [ Browser.Events.onKeyDown (Decode.map HandleKeyPress Keyboard.Event.decodeKeyboardEvent)
         , Browser.Events.onKeyUp (Decode.succeed ReleaseKey)
+        , midiReceivedInfo MidiReceivedInfo
         ]
 
 
@@ -221,11 +331,18 @@ frequencyMap char =
             Nothing
 
 
-encodeNote : Music.Pitch.Pitch -> Encode.Value
-encodeNote pitch =
+encodeNote : { midiId : Maybe String, synthEnabled : Bool, pitch : Music.Pitch.Pitch } -> Encode.Value
+encodeNote { synthEnabled, midiId, pitch } =
     Encode.object
         [ ( "noteString", Encode.string (Music.Pitch.toString pitch) )
         , ( "midiNote", Encode.int (Music.Pitch.toMIDINoteNumber pitch) )
+        , ( "synthEnabled", Encode.bool synthEnabled )
+        , case midiId of
+            Just midiId_ ->
+                ( "midiId", Encode.string midiId_ )
+
+            Nothing ->
+                ( "", Encode.null )
         ]
 
 

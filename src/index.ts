@@ -10,24 +10,31 @@ const synth = new Tone.Synth().toDestination();
 let savedMidiAccess
 
 app.ports.sendNote.subscribe((data) => {
-  synth.triggerAttackRelease(data.noteString, "8n");
-  if (savedMidiAccess !== undefined) {
-    savedMidiAccess.outputs.get('1141572896').send([0x90, 60, 0x7f])
+  if (data.synthEnabled) {
+    synth.triggerAttackRelease(data.noteString, "8n");
+  }
+  if (savedMidiAccess !== undefined && data.midiId !== undefined) {
+    const output = savedMidiAccess.outputs.get(data.midiId)
+    if (output) {
+      output.send([0x90, data.midiNote, 0x7f])
+    }
   }
 })
 
 app.ports.startMidi.subscribe((data) => {
   const onMIDISuccess = (midiAccess) => {
-    const inputs = midiAccess.inputs;
-    const outputs = midiAccess.outputs;
     savedMidiAccess = midiAccess
-    console.log(Object.keys(inputs))
-    outputs.forEach((output) => {
-      console.log(output)
+
+    const outputs = new Array()
+
+    midiAccess.outputs.forEach((output) => {
+      outputs.push({ id: output.id, name: output.name })
     })
+
+    app.ports.midiReceivedInfo.send({success: true, outputs})
   }
   const onMIDIFailure = () => {
-    console.log("MIDI BROKEN")
+    app.ports.midiReceivedInfo.send({success: false, message: "access denied"})
   }
 
   if (navigator.requestMIDIAccess) {
