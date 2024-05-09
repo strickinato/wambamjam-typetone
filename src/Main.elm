@@ -511,7 +511,7 @@ handleMouse model =
 
 handleDown : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
 handleDown ({ currentMusicMode } as model) event =
-    case Debug.log "key" event.key of
+    case event.key of
         Just "Escape" ->
             Just MidiPanic
 
@@ -580,7 +580,7 @@ keyboardToNote model event =
                         importanceToDegree importance (getCurrentScale model)
                 in
                 getCurrentScale model
-                    |> Music.Scale.degree (Debug.log "degree" degree_)
+                    |> Music.Scale.degree degree_
                     |> Music.Pitch.fromPitchClassInOctave model.currentMusicMode.octave
             )
 
