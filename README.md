@@ -1,6 +1,13 @@
 # Wam Jam Hackathon
 
 
+# RUNNING THIS:
+
+`npm install`
+`npm run dev` -- for live watching
+`npm run serve` -- for prod build
+
+
 Random ideas:
 
  - There's some magic here for when you define a song, having it make words out of the letters if possible...

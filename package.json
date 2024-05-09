@@ -2,10 +2,12 @@
   "devDependencies": {
     "@parcel/transformer-elm": "^2.8.3",
     "elm": "^0.19.1-5",
-    "parcel": "^2.8.3"
+    "parcel": "^2.8.3",
+    "serve": "^14.2.3"
   },
   "scripts": {
-    "start": "parcel src/index.html"
+    "dev": "parcel src/index.html",
+    "serve": "parcel build src/index.html && serve dist"
   },
   "dependencies": {
     "tone": "^14.7.77"
