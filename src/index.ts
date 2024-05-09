@@ -1,21 +1,41 @@
 import * as Tone from "tone";
 
 const node = document.getElementById("mount");
+const flags = {
+  windowX: window.innerWidth,
+  windowY: window.innerHeight
+}
+
 const app = Elm.Main.init({
   node,
+  flags,
 });
 
-const synth = new Tone.Synth().toDestination();
-
+// CONSTANTS
 let savedMidiAccess
 
-app.ports.allNotesOff.subscribe((data) => {
-  console.log("BUTT")
-  if (savedMidiAccess !== undefined) {
-    const output = savedMidiAccess.outputs.forEach( output => {
-      output.send([0xB0, 123, 0])
-    })
-  }
+
+// Synth setup
+//
+const synth = new Tone.Synth().toDestination();
+const distortion = new Tone.Distortion(0).toDestination();
+const filter = new Tone.Filter({ type: 'lowpass', Q: 25 }).toDestination();
+const reverb = new Tone.Reverb({decay: 5}).toDestination();
+synth.connect(distortion).connect(filter).connect(reverb);
+
+function normalToFreq(float) {
+  const midiScale = Math.floor(float * 128)
+
+  return Tone.Frequency(midiScale, "midi").toFrequency();
+
+}
+
+// Port Handlers
+//
+app.ports.sendXY.subscribe((data) => {
+  const cutoff = normalToFreq(data.x)
+  filter.frequency.value = cutoff
+  filter.Q.value = Math.floor(data.y * 30)
 })
 
 app.ports.sendNote.subscribe((data) => {
@@ -56,5 +76,13 @@ app.ports.startMidi.subscribe((data) => {
       navigator.requestMIDIAccess().then(onMIDISuccess, onMIDIFailure);
   } else {
     console.log("Midid not supported")
+  }
+})
+
+app.ports.allNotesOff.subscribe((data) => {
+  if (savedMidiAccess !== undefined) {
+    const output = savedMidiAccess.outputs.forEach( output => {
+      output.send([0xB0, 123, 0])
+    })
   }
 })

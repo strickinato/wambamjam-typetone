@@ -6,7 +6,7 @@ import Css exposing (..)
 import Html.Styled as Html exposing (Attribute, Html)
 import Html.Styled.Attributes as Attributes exposing (css)
 import Html.Styled.Events as Events
-import Json.Decode as Decode
+import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import Keyboard.Event
 import Keyboard.Key
@@ -28,6 +28,9 @@ port allNotesOff : () -> Cmd msg
 
 
 port startMidi : () -> Cmd msg
+
+
+port sendXY : Encode.Value -> Cmd msg
 
 
 port midiReceivedInfo : (Encode.Value -> msg) -> Sub msg
@@ -52,7 +55,13 @@ type alias Model =
     , letterStream : LetterStream
     , midiState : MidiState
     , internalSynth : Bool
+    , xyController : XYController
+    , windowSize : ( Int, Int )
     }
+
+
+type alias XYController =
+    { coords : ( Float, Float ) }
 
 
 type Msg
@@ -67,6 +76,8 @@ type Msg
     | MidiReceivedInfo Encode.Value
     | MidiPanic
     | ChangeScaleType Music.ScaleType.ScaleType
+    | XYControlMove ( Float, Float )
+    | WindowSizeChange ( Int, Int )
 
 
 type alias MusicMode =
@@ -82,13 +93,21 @@ type MidiState
     | ConnectionFailed String
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+type alias Flags =
+    { windowX : Int
+    , windowY : Int
+    }
+
+
+init : Flags -> ( Model, Cmd Msg )
+init flags =
     ( { currentMusicMode = { pitchClass = Music.PitchClass.c, scaleType = Music.ScaleType.major }
       , currentPressedLetter = Nothing
       , letterStream = LetterStream.init
       , internalSynth = True
       , midiState = NoConnection
+      , xyController = { coords = ( 0, 0 ) }
+      , windowSize = ( flags.windowX, flags.windowY )
       }
     , Cmd.none
     )
@@ -178,6 +197,19 @@ update msg model =
             in
             ( { model | currentMusicMode = { oldMode | scaleType = scaleType } }, Cmd.none )
 
+        XYControlMove (( x, y ) as coords) ->
+            let
+                encoded =
+                    Encode.object
+                        [ ( "x", Encode.float x )
+                        , ( "y", Encode.float y )
+                        ]
+            in
+            ( { model | xyController = { coords = coords } }, sendXY encoded )
+
+        WindowSizeChange size ->
+            ( { model | windowSize = size }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -214,9 +246,37 @@ view model =
         , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
             [ viewMusicMode model.currentMusicMode
             , viewInternalSynth model.internalSynth
+            , viewXYControl model.xyController
             , viewMidiControl model.midiState
             ]
         ]
+
+
+viewXYControl : XYController -> Html Msg
+viewXYControl xy =
+    section "XY" <|
+        Html.div [ css [ paddingTop (px 8) ] ]
+            [ Html.div
+                [ css
+                    [ border3 (px 1) solid colors.green
+                    , width (px 100)
+                    , height (px 100)
+                    , position relative
+                    ]
+                ]
+                [ Html.div
+                    [ css
+                        [ position absolute
+                        , width (px 5)
+                        , height (px 5)
+                        , backgroundColor colors.green
+                        , left (px <| Debug.log "val" (Tuple.first xy.coords * 95))
+                        , bottom (px <| Debug.log "val" (Tuple.second xy.coords * 95))
+                        ]
+                    ]
+                    []
+                ]
+            ]
 
 
 viewMusicMode : MusicMode -> Html Msg
@@ -314,13 +374,28 @@ subscriptions model =
     Sub.batch
         [ Browser.Events.onKeyDown (Keyboard.Event.considerKeyboardEvent (handleDown model))
         , Browser.Events.onKeyUp (Keyboard.Event.considerKeyboardEvent (handleUp model))
+        , Browser.Events.onResize (\x y -> WindowSizeChange ( x, y ))
         , midiReceivedInfo MidiReceivedInfo
+        , Browser.Events.onMouseMove (handleMouse model)
         , if (not << LetterStream.isEmpty) model.letterStream then
             Browser.Events.onAnimationFrame TickLetterStream
 
           else
             Sub.none
         ]
+
+
+handleMouse : Model -> Decoder Msg
+handleMouse model =
+    Decode.map2
+        (\x y ->
+            XYControlMove
+                ( x / toFloat (Tuple.first model.windowSize)
+                , 1 - (y / toFloat (Tuple.second model.windowSize))
+                )
+        )
+        (Decode.field "clientX" Decode.float)
+        (Decode.field "clientY" Decode.float)
 
 
 handleDown : Model -> Keyboard.Event.KeyboardEvent -> Maybe Msg
