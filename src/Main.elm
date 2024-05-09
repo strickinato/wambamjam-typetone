@@ -152,10 +152,22 @@ getCurrentMidiId { midiState } =
 
 view : Model -> Html Msg
 view model =
-    Html.div [ css [ displayFlex, flexDirection column, justifyContent spaceBetween, height (pct 100) ] ]
+    Html.div
+        [ css
+            [ displayFlex
+            , flexDirection column
+            , justifyContent spaceBetween
+            , height (pct 100)
+            , backgroundColor colors.black
+            , color colors.green
+            , fontFamily monospace
+            ]
+        ]
         [ viewLetter model.currentPressedLetter
-        , viewInternalSynth model.internalSynth
-        , viewMidiControl model.midiState
+        , Html.div [ css [ displayFlex, flexDirection column, gap ] ]
+            [ viewInternalSynth model.internalSynth
+            , viewMidiControl model.midiState
+            ]
         ]
 
 
@@ -215,7 +227,10 @@ viewLetter : Maybe String -> Html Msg
 viewLetter maybeLetter =
     let
         internal =
-            Html.div [ css [ minHeight (px 100) ] ] [ maybeView maybeLetter Html.text ]
+            Html.div [ css [ minHeight (px 100), fontSize (px 72) ] ]
+                [ maybeView maybeLetter
+                    Html.text
+                ]
     in
     section "LETTER" internal
 
@@ -224,12 +239,14 @@ section : String -> Html Msg -> Html Msg
 section title internal =
     Html.div
         [ css
-            [ border3 (px 1) solid (rgb 0 0 0)
+            [ border3 (px 1) solid colors.black
             , width (px 400)
             , paddingLeft (px 8)
             ]
         ]
-        [ Html.div [] [ Html.text title ], internal ]
+        [ Html.div [ css [ borderBottom3 (px 1) solid colors.green ] ] [ Html.text title ]
+        , internal
+        ]
 
 
 subscriptions : Model -> Sub Msg
@@ -354,3 +371,11 @@ maybeView maybe view_ =
 
         Nothing ->
             Html.text ""
+
+
+colors =
+    { green = rgb 0 255 0, black = rgb 0 0 0 }
+
+
+gap =
+    property "gap" "8px"
