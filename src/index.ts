@@ -46,7 +46,7 @@ app.ports.sendXY.subscribe((data) => {
 
 app.ports.sendNote.subscribe((data) => {
   if (data.synthEnabled && data.on) {
-    synth.triggerAttackRelease(data.noteFreq, "8n");
+    synth.triggerAttackRelease(data.noteFreq, "8n", Tone.context.currentTime);
   }
   if (savedMidiAccess !== undefined && data.midiId !== undefined) {
     const output = savedMidiAccess.outputs.get(data.midiId)
